@@ -20,6 +20,8 @@ config = {
     'MIN_TRANSFER_THRESHOLD': Decimal(os.environ.get('MIN_TRANSFER_THRESHOLD', '0.001')),
     'UPDATE_BALANCES_EVERY_SECONDS': os.environ.get('UPDATE_BALANCES_EVERY_SECONDS', '60'),
     'LAST_BLOCK_LOCKED': os.environ.get('LAST_BLOCK_LOCKED', "True"),
+    'NETWORK_FEE': os.environ.get('NETWORK_FEE', "0.000012"), #in TRX
+
     
 
 }

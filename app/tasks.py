@@ -34,19 +34,18 @@ logger = get_task_logger(__name__)
 #     pass
 
 
-# @celery.task()
-# def post_payout_results(data, symbol):
-#     # while True:
-#     #     try:
-#     #         return requests.post(
-#     #             f'http://{config["SHKEEPER_HOST"]}/api/v1/payoutnotify/{symbol}',
-#     #             headers={'X-Shkeeper-Backend-Key': config['SHKEEPER_KEY']},
-#     #             json=data,
-#     #         )
-#     #     except Exception as e:
-#     #         logger.exception(f'Shkeeper payout notification failed: {e}')
-#     #         time.sleep(10)
-#     pass
+@celery.task()
+def post_payout_results(data, symbol):
+    while True:
+        try:
+            return requests.post(
+                f'http://{config["SHKEEPER_HOST"]}/api/v1/payoutnotify/{symbol}',
+                headers={'X-Shkeeper-Backend-Key': config['SHKEEPER_KEY']},
+                json=data,
+            )
+        except Exception as e:
+            logger.exception(f'Shkeeper payout notification failed: {e}')
+            time.sleep(10)
 
 
 @celery.task()
@@ -100,24 +99,18 @@ def refresh_balances(self):
     return updated
 
 
-# @celery.task(bind=True)
-# @skip_if_running
-# def drain_account(self, symbol, account):
-#     # logger.warning(f"Start draining from account {account} crypto {symbol}")
-#     # # return False
-#     # if symbol == "ETH":
-#     #     inst = Coin(symbol)
-#     #     destination = inst.get_fee_deposit_account()
-#     #     results = inst.drain_account(account, destination)
-#     # elif symbol in config['TOKENS'][config["CURRENT_ETH_NETWORK"]].keys():
-#     #     inst = Token(symbol)
-#     #     destination = inst.get_fee_deposit_account()
-#     #     results = inst.drain_tocken_account(account, destination)
-#     # else:
-#     #     raise Exception(f"Symbol is not in config")
-    
-#     # return results
-#     pass
+@celery.task(bind=True)
+@skip_if_running
+def drain_account(self, symbol, account):
+    logger.warning(f"Start draining from account {account} crypto {symbol}")
+    # return False
+    if symbol == "XRP":
+        w = XRPWallet()
+        destination = w.get_fee_deposit_account()
+        results = w.drain_account(account, destination)
+    else:
+        raise Exception(f"Symbol is not in config")
+    return results
         
 
 

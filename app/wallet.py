@@ -2,9 +2,11 @@ import os
 import json
 import time
 import decimal
+import xrpl
 from flask import current_app as app
 from xrpl.wallet import Wallet
 from xrpl.clients import JsonRpcClient
+from xrpl.core.addresscodec import is_valid_xaddress, is_valid_classic_address,xaddress_to_classic_address
 from xrpl.models.requests.account_info import AccountInfo
 from xrpl.models.requests.ledger_data import LedgerData
 from xrpl.models.requests.ledger import Ledger
@@ -110,7 +112,7 @@ class XRPWallet():
         error_message = result.get("error_message", "Unknown error")
         error = result.get("error", "Unknown")
         if error == "actNotFound":
-            return {"Balance": 0}
+            return {"Balance": 0, "Sequence": -1}
         else:
             return error_code, error_message
     
@@ -120,7 +122,7 @@ class XRPWallet():
         elif response.status == ResponseStatus.ERROR:
             return self.handle_error_response(response)
         else:
-            print("Unknown response status")   
+            logger.warning("Unknown response status")   
 
     def save_wallet_to_db(self, address, secret):
         e = Encryption
@@ -208,6 +210,22 @@ class XRPWallet():
     
         return balance_xrp
     
+    def get_sequence_number(self, address):
+        # Create an AccountInfo request
+        account_info_request = AccountInfo(
+            account=address,
+            ledger_index="validated"  # Use "validated" for the latest validated ledger
+        )
+    
+        # Send the request and get the response
+        response = self.client.request(account_info_request)
+        account_data = self.handle_response(response)
+        # Extract the XRP balance from the response
+        logger.warning(account_data)
+        sequence = str(account_data["Sequence"])
+    
+        return sequence
+    
     def set_balance(self, s_address, s_amount):
         try:
             from app import create_app
@@ -226,6 +244,7 @@ class XRPWallet():
                 db.session.close()
         finally:
             with app.app_context():
+                db.session.close()
                 db.session.remove()
                 db.engine.dispose()  
                 
@@ -246,6 +265,130 @@ class XRPWallet():
                     wallet_data = self.load_wallet_from_file(file_path)
                     wallets.append(wallet_data)
         return wallets
+    
+    def get_seed_from_address(self, address):
+        try:
+            pd = Wallets.query.filter_by(pub_address = address).first()
+        except:
+            db.session.rollback()
+            raise Exception(f"There was exception during query to the database, try again later")
+        e = Encryption()
+        return e.decrypt(pd.priv_key)
+    
+    def make_multipayout(self, payout_list):
+        payout_results = []
+        payout_list = payout_list
+
+        for payout in payout_list:
+            payout.update({'dest_tag': None})
+    
+        for payout in payout_list:
+            if not is_valid_xaddress(payout['dest']) and not is_valid_classic_address(payout['dest']):
+                raise Exception(f"Address {payout['dest']} is not valid XRPL address") 
+            
+            if not is_valid_classic_address(payout['dest']):
+                    logger.warning(f"Provided address {payout['dest']} is not classic address, converting to classic address")
+                    logger.warning(xaddress_to_classic_address(payout['dest']))
+                    payout['dest'], payout['dest_tag'], is_testnet = xaddress_to_classic_address(payout['dest'])                   
+                    logger.warning(f"Changed to {payout['dest']} which is classic address with destination tag {payout['dest_tag']}") 
+         
+        # Check if enouth funds for multipayout on account
+        should_pay  = decimal.Decimal(0)
+        for payout in payout_list:
+            should_pay = should_pay + decimal.Decimal(payout['amount'])
+        should_pay = should_pay + len(payout_list) * (config('NETWORK_FEE')) + 10
+        have_crypto = self.get_fee_deposit_account_balance()
+        if have_crypto < should_pay:
+            raise Exception(f"Have not enough crypto on fee account, need {should_pay} have {have_crypto}")
+        else:
+            sending_wallet = xrpl.wallet.Wallet.from_seed(self.get_seed_from_address(self.get_fee_deposit_account()))
+            for payout in payout_list:
+                payment = xrpl.models.transactions.Payment(
+                        account=self.get_fee_deposit_account(),
+                        amount=xrpl.utils.xrp_to_drops(int(payout['amount'])),
+                        destination=payout['dest'],)
+                				
+                try:    
+                    response = xrpl.transaction.submit_and_wait(payment, self.client, sending_wallet)    
+                except xrpl.transaction.XRPLReliableSubmissionException as e:   
+                    response = f"Submit failed: {e}"                
+                logger.warning(response)            
+                payout_results.append({
+                    "dest": payout['dest'],
+                    "amount": float(payout['amount']),
+                    "status": "success",
+                    "txids": [response.result['hash']],
+                })
+
+        
+            return payout_results
+
+
+    
+    def drain_account(self, account_address, destination):
+        drain_results = []
+        account_balance = decimal.Decimal(0)
+        if not is_valid_xaddress(destination) and not is_valid_classic_address(destination):
+            raise Exception(f"Address {destination} is not valid XRPL address") 
+
+        if not is_valid_xaddress(account_address) and not is_valid_classic_address(account_address):
+            raise Exception(f"Address {account_address} is not valid XRPL address")  
+        
+        if not is_valid_classic_address(destination):
+                logger.warning(f"Provided address {destination} is not classic address, converting to classic address")
+                logger.warning(xaddress_to_classic_address(destination))
+                destination, dest_tag, is_testnet = xaddress_to_classic_address(destination)
+                logger.warning(f"Changed to {destination} which is classic address with destination tag {dest_tag}") 
+
+        if account_address == destination:
+           logger.warning(f"Fee-deposit account, skip")
+           return False
+        
+        sending_wallet = xrpl.wallet.Wallet.from_seed(self.get_seed_from_address(account_address))
+
+        if account_address == self.get_fee_deposit_account():
+            logger.warning("Draining fee-deposit account")
+            account_balance = self.get_balance(account_address)
+            amount = account_balance - decimal.Decimal('0.00002') - decimal.Decimal('10')
+            payment = xrpl.models.transactions.Payment(
+                account=sending_wallet.address,
+                amount=xrpl.utils.xrp_to_drops(int(amount)),
+                destination=destination,
+            )
+            logger.warning(xrpl.account.get_latest_transaction(account_address, self.client).result)
+        else:    
+            logger.warning("Draining regular one time account, calling delete account")
+            logger.warning(f"Account sequence number - {self.get_sequence_number(account_address)}")
+            logger.warning(f"Last number in blockchain {self.get_last_block_number()}")
+            if int(self.get_sequence_number(account_address)) < 0:
+                   logger.warning(f"Account {account_address} has already drained, balance 0")
+                   return False
+            if int(self.get_last_block_number()) - int(self.get_sequence_number(account_address)) > 256:
+                logger.warning(f"Account {account_address} can be deleted")
+                
+                payment = xrpl.models.transactions.AccountDelete(
+                    account=sending_wallet.address,
+                    destination=destination,
+                )                
+            else:
+                logger.warning("To soon to delete account, need check some time: https://xrpl.org/accountdelete.html#error-cases")
+                return False
+        try:    
+            response = xrpl.transaction.submit_and_wait(payment, self.client, sending_wallet)    
+        except xrpl.transaction.XRPLReliableSubmissionException as e:   
+            response = f"Submit failed: {e}"                
+        logger.warning(response)        
+        drain_results.append({
+                        "dest": destination,
+                        "amount": float(self.get_xrp_from_drops(response.result['meta']['delivered_amount'])),
+                        "status": "success",
+                        "txids": [response.result['hash']],
+                    })
+        logger.warning(drain_results)
+        
+        return drain_results
+    
+
     
     
                                     
