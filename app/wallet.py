@@ -55,7 +55,9 @@ class XRPWallet():
         return config['NETWORK_FEE']
     
     def get_xaddress(self, destination_tag):
-        return classic_address_to_xaddress(self.get_fee_deposit_account, destination_tag, is_test_network())
+        xaddress = classic_address_to_xaddress(self.get_fee_deposit_account(), destination_tag, is_test_network())
+        logger.warning(f'Get xaddress {xaddress} from fee-deposit account and dest_tag {destination_tag}')
+        return xaddress
 
     def set_fee_deposit_account(self):
         wallet = Wallet.create()    
@@ -64,9 +66,6 @@ class XRPWallet():
         secret = wallet.seed
         e = Encryption
         try:
-            from app import create_app
-            app = create_app()
-            app.app_context().push()
             with app.app_context():
                 db.session.add(Wallets(pub_address = address, 
                                         priv_key = e.encrypt(secret),
@@ -203,9 +202,6 @@ class XRPWallet():
         if (not Settings.query.filter_by(name = "destination_tag").first()):
             logger.warning(f"Create destination_tag, because cannot get it in DB")
             try:
-                from app import create_app
-                app = create_app()
-                app.app_context().push()
                 with app.app_context():
                     db.session.add(Settings(name = "destination_tag", 
                                             value = 1000))
@@ -219,18 +215,17 @@ class XRPWallet():
                     db.engine.dispose() 
             
         else:
+            logger.warning('Destination tag exist in db, getting it ')
             try:
                 pd = Settings.query.filter_by(name = "destination_tag").first()
             except:
                 db.session.rollback()
                 raise Exception(f"There was exception during query to the database, try again later")
-            dest_tag = pd.value + 1
-            pd.value = dest_tag
+            logger.warning(f'Get destination tag - {pd.value}')
+            dest_tag = int(pd.value) + 1
+            pd.value = str(dest_tag)
             logger.warning(f'Get a next destination tag {dest_tag}')
             try:
-                from app import create_app
-                app = create_app()
-                app.app_context().push()
                 with app.app_context():
                     db.session.add(pd)
                     db.session.commit()
@@ -290,9 +285,6 @@ class XRPWallet():
     
     def set_balance(self, s_address, s_amount):
         try:
-            from app import create_app
-            app = create_app()
-            app.app_context().push()
             try:
                 pd = Accounts.query.filter_by(address = s_address).first()
             except:
