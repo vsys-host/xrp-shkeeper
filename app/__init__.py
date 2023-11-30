@@ -1,8 +1,5 @@
 from celery import Celery
 from flask import Flask
-# import flask_sqlalchemy
-
-
 
 from . import events
 from .config import config
@@ -19,6 +16,7 @@ celery = Celery(
     result_accept_content=['pickle'],
 )
 
+celery.conf.worker_max_tasks_per_child = 5
 
 def create_app():
 

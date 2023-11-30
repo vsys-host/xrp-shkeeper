@@ -1,15 +1,8 @@
-# import json
-# from decimal import Decimal
-
 from flask import current_app, g
-# import decimal
-# import requests
-
-# from .. import events
 from ..logging import logger
+from ..config import config
 from . import api
 from app import create_app
-# from ..unlock_acc import get_account_password
 from ..wallet import XRPWallet
 
 app = create_app()
@@ -19,6 +12,7 @@ app.app_context().push()
 def generate_new_address():   
     w = XRPWallet() 
     new_address = w.generate_wallet()
+    logger.warning(new_address)
     return {'status': 'success', 'address': new_address}
 
 @api.post('/balance')
@@ -31,7 +25,7 @@ def get_balance():
 def get_status():
     w = XRPWallet()
     last_checked_block_number = w.get_last_checked_block_number()
-    last_checked_block_timestamp =  w.get_ledger_data(last_checked_block_number).result['close_time']
+    last_checked_block_timestamp =  w.get_ledger_data(last_checked_block_number).result['ledger']['close_time']
     return {'status': 'success', 'last_block_timestamp': last_checked_block_timestamp}
 
 @api.post('/transaction/<txid>')
@@ -41,12 +35,18 @@ def get_transaction(txid):
     try:
         list_accounts = w.get_all_accounts()
         transaction = w.get_transaction_from_ledger(txid).result
+        logger.warning(transaction)
         if (transaction['Destination'] in list_accounts) and (transaction['Account'] in list_accounts):
             address = transaction["Destination"]
             category = 'internal'
         elif transaction['Destination'] in list_accounts:
-            address = transaction["Destination"]
-            category = 'receive'
+            if config['XADDRESS_MODE'] == 'disabled':
+                address = transaction["Destination"]
+                category = 'receive'
+            else:
+                dest_tag = int(transaction['DestinationTag'])
+                address = w.get_xaddress(dest_tag)
+                category = 'receive'
         elif transaction['Account'] in list_accounts:                
             address = transaction["Account"]
             category = 'send'
@@ -66,15 +66,9 @@ def get_transaction(txid):
 
 @api.post('/dump')
 def dump():
-    # coin_inst = Coin("ETH")
-    # fee_address = coin_inst.get_fee_deposit_account()
-    # r = requests.get('http://'+config["ETHEREUM_HOST"]+':8081',  headers={'X-Shkeeper-Backend-Key': config["SHKEEPER_KEY"]})
-    # key_list = r.text.split("href=\"")
-    # for key in key_list:
-    #     if (key.find(fee_address.lower()[2:])) != -1:
-    #         fee_key=requests.get('http://'+config["ETHEREUM_HOST"]+':8081/'+str(key.split("\"")[0]),  headers={'X-Shkeeper-Backend-Key': config["SHKEEPER_KEY"]})
-    # return fee_key.text
-    pass
+    w = XRPWallet()
+    all_wallets = w.get_dump()
+    return all_wallets
 
 @api.post('/fee-deposit-account')
 def get_fee_deposit_account():

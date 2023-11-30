@@ -1,12 +1,13 @@
 import os
 import json
-import time
 import decimal
 import xrpl
+import logging
+import requests
 from flask import current_app as app
 from xrpl.wallet import Wallet
 from xrpl.clients import JsonRpcClient
-from xrpl.core.addresscodec import is_valid_xaddress, is_valid_classic_address,xaddress_to_classic_address
+from xrpl.core.addresscodec import is_valid_xaddress, is_valid_classic_address,xaddress_to_classic_address, classic_address_to_xaddress
 from xrpl.models.requests.account_info import AccountInfo
 from xrpl.models.requests.ledger_data import LedgerData
 from xrpl.models.requests.ledger import Ledger
@@ -14,7 +15,7 @@ from xrpl.models.requests.tx import Tx
 from xrpl.models.response import ResponseStatus
 from xrpl.utils import drops_to_xrp
 from .encryption import Encryption
-from .config import config
+from .config import config, is_test_network
 from .models import Wallets, Accounts, Settings, db
 from .logging import logger
 
@@ -49,6 +50,12 @@ class XRPWallet():
             pd = Settings.query.filter_by(name = 'last_block').first()    
         last_checked_block_number = int(pd.value)
         return last_checked_block_number
+    
+    def get_transaction_price(self):
+        return config['NETWORK_FEE']
+    
+    def get_xaddress(self, destination_tag):
+        return classic_address_to_xaddress(self.get_fee_deposit_account, destination_tag, is_test_network())
 
     def set_fee_deposit_account(self):
         wallet = Wallet.create()    
@@ -126,10 +133,8 @@ class XRPWallet():
 
     def save_wallet_to_db(self, address, secret):
         e = Encryption
+        logger.warning(f'Saving wallet {address} to DB')
         try:
-            from app import create_app
-            app = create_app()
-            app.app_context().push()
             with app.app_context():
                 db.session.add(Wallets(pub_address = address, 
                                         priv_key = e.encrypt(secret),
@@ -148,10 +153,8 @@ class XRPWallet():
                 db.engine.dispose() 
 
     def save_account_to_db(self, address):
+        logger.warning(f'Saving account {address} to DB')
         try:
-            from app import create_app
-            app = create_app()
-            app.app_context().push()
             with app.app_context():
                 db.session.add(Accounts(address = address, 
                                              crypto = "XRP",
@@ -164,6 +167,15 @@ class XRPWallet():
             with app.app_context():
                 db.session.remove()
                 db.engine.dispose() 
+
+    def get_dump(self):
+        logger.warning('Start dumping wallets')
+        all_wallets = {}
+        address_list = self.get_all_addresses()
+        for address in address_list:
+            all_wallets.update({address: {'public_address': address,
+                                          'secret': self.get_seed_from_address(address)}})
+        return all_wallets
 
     def get_all_addresses(self):
         address_list = []
@@ -186,14 +198,62 @@ class XRPWallet():
         for account in all_account_list:
             account_list.append(account.address)
         return account_list
- 
+    
+    def get_next_destination_tag(self):
+        if (not Settings.query.filter_by(name = "destination_tag").first()):
+            logger.warning(f"Create destination_tag, because cannot get it in DB")
+            try:
+                from app import create_app
+                app = create_app()
+                app.app_context().push()
+                with app.app_context():
+                    db.session.add(Settings(name = "destination_tag", 
+                                            value = 1000))
+                    db.session.commit()
+                    db.session.close() 
+                    db.session.remove()
+                    db.engine.dispose()
+            finally:
+                with app.app_context():
+                    db.session.remove()
+                    db.engine.dispose() 
+            
+        else:
+            try:
+                pd = Settings.query.filter_by(name = "destination_tag").first()
+            except:
+                db.session.rollback()
+                raise Exception(f"There was exception during query to the database, try again later")
+            dest_tag = pd.value + 1
+            pd.value = dest_tag
+            logger.warning(f'Get a next destination tag {dest_tag}')
+            try:
+                from app import create_app
+                app = create_app()
+                app.app_context().push()
+                with app.app_context():
+                    db.session.add(pd)
+                    db.session.commit()
+                    db.session.close() 
+                    db.session.remove()
+                    db.engine.dispose()
+            finally:
+                with app.app_context():
+                    db.session.remove()
+                    db.engine.dispose() 
+            return dest_tag        
+
     def generate_wallet(self):
-        wallet = Wallet.create()    
-        # Extract the address and secret from the wallet
-        address = wallet.classic_address
-        secret = wallet.seed
-        self.save_wallet_to_db(address, secret)    
-        return address
+        if config['XADDRESS_MODE'] == 'disabled':
+            wallet = Wallet.create()    
+            # Extract the address and secret from the wallet
+            address = wallet.classic_address
+            secret = wallet.seed
+            self.save_wallet_to_db(address, secret)    
+            return address
+        else:
+            address = classic_address_to_xaddress(self.get_fee_deposit_account(), self.get_next_destination_tag(), is_test_network()) 
+            return address
     
     def get_balance(self, address):    
         # Create an AccountInfo request
@@ -203,6 +263,8 @@ class XRPWallet():
         )
     
         # Send the request and get the response
+        requests_log = logging.getLogger("httpx")
+        requests_log.setLevel(logging.WARNING)
         response = self.client.request(account_info_request)
         account_data = self.handle_response(response)
         # Extract the XRP balance from the response
@@ -242,6 +304,8 @@ class XRPWallet():
                 db.session.add(pd)
                 db.session.commit()
                 db.session.close()
+                db.session.remove()
+                db.engine.dispose()  
         finally:
             with app.app_context():
                 db.session.close()
@@ -272,15 +336,15 @@ class XRPWallet():
         except:
             db.session.rollback()
             raise Exception(f"There was exception during query to the database, try again later")
-        e = Encryption()
-        return e.decrypt(pd.priv_key)
+        return Encryption.decrypt(pd.priv_key)
     
     def make_multipayout(self, payout_list):
         payout_results = []
         payout_list = payout_list
 
         for payout in payout_list:
-            payout.update({'dest_tag': None})
+            if 'dest_tag' not in payout:
+                payout.update({'dest_tag': None})
     
         for payout in payout_list:
             if not is_valid_xaddress(payout['dest']) and not is_valid_classic_address(payout['dest']):
@@ -296,7 +360,7 @@ class XRPWallet():
         should_pay  = decimal.Decimal(0)
         for payout in payout_list:
             should_pay = should_pay + decimal.Decimal(payout['amount'])
-        should_pay = should_pay + len(payout_list) * (config('NETWORK_FEE')) + 10
+        should_pay = should_pay + len(payout_list) * decimal.Decimal(config['NETWORK_FEE']) + 10
         have_crypto = self.get_fee_deposit_account_balance()
         if have_crypto < should_pay:
             raise Exception(f"Have not enough crypto on fee account, need {should_pay} have {have_crypto}")
@@ -306,7 +370,8 @@ class XRPWallet():
                 payment = xrpl.models.transactions.Payment(
                         account=self.get_fee_deposit_account(),
                         amount=xrpl.utils.xrp_to_drops(int(payout['amount'])),
-                        destination=payout['dest'],)
+                        destination=payout['dest'],
+                        destination_tag=payout['dest_tag'])
                 				
                 try:    
                     response = xrpl.transaction.submit_and_wait(payment, self.client, sending_wallet)    
@@ -326,6 +391,7 @@ class XRPWallet():
 
     
     def drain_account(self, account_address, destination):
+        #TODO stop draining if fee deposit account has 0 in the balance
         drain_results = []
         account_balance = decimal.Decimal(0)
         if not is_valid_xaddress(destination) and not is_valid_classic_address(destination):
@@ -343,6 +409,8 @@ class XRPWallet():
         if account_address == destination:
            logger.warning(f"Fee-deposit account, skip")
            return False
+        
+        logger.warning(self.get_seed_from_address(account_address))
         
         sending_wallet = xrpl.wallet.Wallet.from_seed(self.get_seed_from_address(account_address))
 
@@ -371,7 +439,7 @@ class XRPWallet():
                     destination=destination,
                 )                
             else:
-                logger.warning("To soon to delete account, need check some time: https://xrpl.org/accountdelete.html#error-cases")
+                logger.warning("To soon to delete account, need wait some time: https://xrpl.org/accountdelete.html#error-cases")
                 return False
         try:    
             response = xrpl.transaction.submit_and_wait(payment, self.client, sending_wallet)    

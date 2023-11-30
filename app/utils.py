@@ -1,14 +1,9 @@
-import logging
 from decimal import Decimal
-import time
 from typing import Literal
-import concurrent
-import requests as rq
 from functools import wraps
 
 from flask import current_app
 from werkzeug.routing import BaseConverter
-import requests
 
 from .config import config
 from .logging import logger

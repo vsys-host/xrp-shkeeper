@@ -2,87 +2,63 @@
 
 from flask import g, request
 from flask import current_app as app
-# from web3 import Web3, HTTPProvider
+import decimal
 
 from .. import celery
-# from ..tasks import make_multipayout 
-# from ..utils import BaseConverter
+from ..tasks import make_multipayout 
 from . import api
-
-# from ..token import Token, Coin
-# from ..logging import logger
+from ..wallet import XRPWallet
 from ..config import config
+from ..logging import logger
 
 
 @api.post('/calc-tx-fee/<decimal:amount>')
 def calc_tx_fee(amount):
-    # if g.symbol == "ETH":
-    #     coin_inst = Coin('ETH')
-    #     fee = coin_inst.get_transaction_price()
-    #     return {'accounts_num': 1,
-    #             'fee': float(fee)}
+    if g.symbol == "XRP":
+        w = XRPWallet()
+        fee = w.get_transaction_price()
+        return {'accounts_num': 1,
+                'fee': float(fee)}
+    else:
+        return {'status': 'error', 'msg': 'unknown crypto' }
 
-    # elif g.symbol in config['TOKENS'][config["CURRENT_ETH_NETWORK"]].keys():
-    #     token_instance = Token(g.symbol)
-    #     need_crypto = token_instance.get_coin_transaction_fee()       
-    #     return {
-    #         'accounts_num': 1,
-    #         'fee': float(need_crypto),
-    #     }
-    # else:
-    #     return {'status': 'error', 'msg': 'unknown crypto' }
-    pass
 
 @api.post('/multipayout')
-def multipayout():
-    # w3 = Web3(HTTPProvider(config["FULLNODE_URL"], request_kwargs={'timeout': int(config['FULLNODE_TIMEOUT'])}))
-    
-    # try:
-    #     payout_list = request.get_json(force=True)
-    # except Exception as e:
-    #     raise Exception(f"Bad JSON in payout list: {e}")
+def multipayout():        
+    try:
+        payout_list = request.get_json(force=True)
+    except Exception as e:
+        raise Exception(f"Bad JSON in payout list: {e}")
 
-    # if not payout_list:
-    #         raise Exception(f"Payout list is empty!")
+    if not payout_list:
+            raise Exception(f"Payout list is empty!")
 
-    # for transfer in payout_list:
-    #     try:
-    #         is_address = w3.isAddress(transfer['dest'])
-    #     except Exception as e:
-    #         raise Exception(f"Bad destination address in {transfer}: {e}")
-    #     if not is_address:
-    #         raise Exception(f"Bad destination address in {transfer}")
-    #     try:
-    #         transfer['amount'] = Decimal(transfer['amount'])
-    #     except Exception as e:
-    #         raise Exception(f"Bad amount in {transfer}: {e}")
+    for transfer in payout_list:
+        try:
+            transfer['amount'] = decimal.Decimal(transfer['amount'])
+        except Exception as e:
+            raise Exception(f"Bad amount in {transfer}: {e}")
 
-    #     if transfer['amount'] <= 0:
-    #         raise Exception(f"Payout amount should be a positive number: {transfer}")
+        if transfer['amount'] <= 0:
+            raise Exception(f"Payout amount should be a positive number: {transfer}")
 
-    # if g.symbol == 'ETH':
-    #     task = (make_multipayout.s(g.symbol, payout_list, Decimal(config['MAX_PRIORITY_FEE']))).apply_async()
-    #     return{'task_id': task.id}
-    # elif  g.symbol in config['TOKENS'][config["CURRENT_ETH_NETWORK"]].keys(): 
-    #     task = ( make_multipayout.s(g.symbol, payout_list, Decimal(config['MAX_PRIORITY_FEE']))).apply_async()
-    #     return {'task_id': task.id}
-    # else:
-    #     raise Exception(f"{g.symbol} is not defined in config, cannot make payout")
+    if g.symbol == 'XRP':
+        task = (make_multipayout.s(g.symbol, payout_list, decimal.Decimal(config['NETWORK_FEE']))).apply_async()
+        return{'task_id': task.id}
+    else:
+        raise Exception(f"{g.symbol} is not defined in config, cannot make payout")
     pass
     
 @api.post('/payout/<to>/<decimal:amount>')
 def payout(to, amount):
-    # payout_list = [{ "dest": to, "amount": amount }]
-    # if g.symbol == 'ETH':
-    #     payout_list = [{ "dest": to, "amount": amount }]
-    #     task = (make_multipayout.s(g.symbol, payout_list, Decimal(config['MAX_PRIORITY_FEE']))).apply_async()        
-    #     return {'task_id': task.id}
-    # elif  g.symbol in config['TOKENS'][config["CURRENT_ETH_NETWORK"]].keys():
-    #     task = (make_multipayout.s(g.symbol, payout_list, Decimal(config['MAX_PRIORITY_FEE']))).apply_async()
-    #     return {'task_id': task.id}
-    # else:
-    #     raise Exception(f"{g.symbol} is not defined in config, cannot make payout")
-    pass
+    logger.warning(f'starting payout {amount}, to {to}')
+    payout_list = [{ "dest": to, "amount": amount }]
+    if g.symbol == 'XRP':
+        payout_list = [{ "dest": to, "amount": amount }]
+        task = (make_multipayout.s(g.symbol, payout_list, decimal.Decimal(config['NETWORK_FEE']))).apply_async()        
+        return {'task_id': task.id}
+    else:
+        raise Exception(f"{g.symbol} is not defined in config, cannot make payout")
 
 @api.post('/task/<id>')
 def get_task(id):

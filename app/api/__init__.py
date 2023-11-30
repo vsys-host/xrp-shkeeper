@@ -3,7 +3,6 @@ from flask import Blueprint, g, request
 from werkzeug.exceptions import HTTPException
 
 from ..config import config
-# from ..logging import logger
 
 api = Blueprint('api', __name__, url_prefix='/<symbol>')
 metrics_blueprint = Blueprint('metrics_blueprint', __name__, url_prefix='/')

@@ -1,9 +1,5 @@
-
-import decimal
 import time
-import copy
 import requests
-from decimal import Decimal
 
 from celery.schedules import crontab
 from celery.utils.log import get_task_logger
@@ -17,21 +13,16 @@ from .logging import logger
 
 logger = get_task_logger(__name__)
 
-# @celery.task()
-# def make_multipayout(symbol, payout_list, fee):
-#     # if symbol == "ETH":
-#     #     coint_inst = Coin(symbol)
-#     #     payout_results = coint_inst.make_multipayout_eth(payout_list, fee)
-#     #     post_payout_results.delay(payout_results, symbol)
-#     #     return payout_results    
-#     # elif symbol in config['TOKENS'][config["CURRENT_ETH_NETWORK"]].keys():
-#     #     token_inst = Token(symbol)
-#     #     payout_results = token_inst.make_token_multipayout(payout_list, fee)
-#     #     post_payout_results.delay(payout_results, symbol)
-#     #     return payout_results    
-#     # else:
-#     #     return [{"status": "error", 'msg': "Symbol is not in config"}]
-#     pass
+@celery.task()
+def make_multipayout(symbol, payout_list, fee):
+    if symbol == "XRP":
+        w = XRPWallet()
+        logger.warning(f"Starting payout {payout_list}")
+        payout_results = w.make_multipayout(payout_list)
+        post_payout_results.delay(payout_results, symbol)
+        return payout_results  
+    else:
+        return [{"status": "error", 'msg': "Symbol is not in config"}]
 
 
 @celery.task()
@@ -61,6 +52,7 @@ def walletnotify_shkeeper(symbol, txid):
             logger.warning(f'Shkeeper notification failed for {symbol}/{txid}: {e}')
             time.sleep(10)
 
+
 @celery.task()
 def create_wallet(self):
     w = XRPWallet()
@@ -72,6 +64,7 @@ def create_wallet(self):
 @skip_if_running
 def refresh_balances(self):
     updated = 0
+    checked = 0
     w = XRPWallet()
     address_list = w.get_all_addresses()
     account_list = w.get_all_accounts()
@@ -93,10 +86,13 @@ def refresh_balances(self):
 
     for account in account_list:
         amount = w.get_balance(account)
+        if amount > config['MIN_TRANSFER_THRESHOLD']:
+            drain_account.delay('XRP', account)
         if w.set_balance(account, amount):
-            updated =+ 1
+            updated += 1
+        checked += 1
     
-    return updated
+    return {'checked': checked, 'updated': updated}
 
 
 @celery.task(bind=True)
@@ -112,7 +108,6 @@ def drain_account(self, symbol, account):
         raise Exception(f"Symbol is not in config")
     return results
         
-
 
 @celery.on_after_configure.connect
 def setup_periodic_tasks(sender, **kwargs):

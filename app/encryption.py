@@ -3,19 +3,29 @@ from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
+from .unlock_acc import get_account_password
+
 class Encryption:
 
-    encryption = None
     key = None
 
     @classmethod
+    def _check_status(cls):
+        password = get_account_password()
+        if not password:
+            raise Exception(f"Cannot get password from shkeeper, check ")
+        else:
+            password = 'shkeeper'
+            cls.key  = cls._get_key_from_password(password)
+
+    @classmethod
     def encrypt(cls, cleartext):
-        cls.encryption = True
-        cls.key  = cls._get_key_from_password("shkeeper")
+        cls._check_status()
         return cls._encrypt(cleartext)
 
     @classmethod
     def decrypt(cls, ciphertext):
+        cls._check_status()
         return cls._decrypt(ciphertext)
 
     @classmethod
