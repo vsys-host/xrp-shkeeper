@@ -413,7 +413,7 @@ class XRPWallet():
             for payout in payout_list:
                 payment = xrpl.models.transactions.Payment(
                         account=self.get_fee_deposit_account(),
-                        amount=xrpl.utils.xrp_to_drops(int(payout['amount'])),
+                        amount=xrpl.utils.xrp_to_drops(payout['amount']),
                         destination=payout['dest'],
                         destination_tag=payout['dest_tag'])
                 				
