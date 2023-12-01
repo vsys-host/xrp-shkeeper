@@ -13,9 +13,8 @@ class Encryption:
     def _check_status(cls):
         password = get_account_password()
         if not password:
-            raise Exception(f"Cannot get password from shkeeper, check ")
+            raise Exception(f"Cannot get password from shkeeper, quit")
         else:
-            password = 'shkeeper'
             cls.key  = cls._get_key_from_password(password)
 
     @classmethod
