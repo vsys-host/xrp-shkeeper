@@ -16,7 +16,7 @@ celery = Celery(
     result_accept_content=['pickle'],
 )
 
-celery.conf.worker_max_tasks_per_child = 5
+celery.conf.worker_max_tasks_per_child = int(config['CELERY_MAX_TASKS_PER_CHILD'])
 
 def create_app():
 

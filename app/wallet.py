@@ -85,22 +85,37 @@ class XRPWallet():
                 db.engine.dispose()  
 
     def get_fee_deposit_account(self):
-        try:
-            pd = Accounts.query.filter_by(type = "fee_deposit").first()
-        except:
-            db.session.rollback()
-            raise Exception(f"There was exception during query to the database, try again later")
+        tries = 3
+        for i in range(tries):
+            try:
+                pd = Accounts.query.filter_by(type = "fee_deposit").first()
+            except:
+                if i < tries - 1: # i is zero indexed
+                    db.session.rollback()
+                    continue
+                else:
+                    db.session.rollback()
+                    raise Exception(f"There was exception during query to the database, try again later")
+            break
+
         if not pd:
             self.set_fee_deposit_account()
         pd = Accounts.query.filter_by(type = "fee_deposit").first()
         return pd.address
     
     def get_fee_deposit_account_balance(self):
-        try:
-            pd = Accounts.query.filter_by(type = "fee_deposit").first()
-        except:
-            db.session.rollback()
-            raise Exception(f"There was exception during query to the database, try again later")
+        tries = 3
+        for i in range(tries):
+            try:
+                pd = Accounts.query.filter_by(type = "fee_deposit").first()
+            except:
+                if i < tries - 1: # i is zero indexed
+                    db.session.rollback()
+                    continue
+                else:
+                    db.session.rollback()
+                    raise Exception(f"There was exception during query to the database, try again later")
+            break
         amount  = self.get_balance(pd.address)
         return amount
 
@@ -178,22 +193,36 @@ class XRPWallet():
 
     def get_all_addresses(self):
         address_list = []
-        try:
-            wallet_list = Wallets.query.all()
-        except:
-            db.session.rollback()
-            raise Exception(f"There was exception during query to the database, try again later")
+        tries = 3
+        for i in range(tries):
+            try:
+                wallet_list = Wallets.query.all()
+            except:
+                if i < tries - 1: # i is zero indexed
+                    db.session.rollback()
+                    continue
+                else:
+                    db.session.rollback()
+                    raise Exception(f"There was exception during query to the database, try again later")
+            break
         for wallet in wallet_list:
             address_list.append(wallet.pub_address)
         return address_list
     
     def get_all_accounts(self):
         account_list = []
-        try:
-            all_account_list = Accounts.query.all()
-        except:
-            db.session.rollback()
-            raise Exception(f"There was exception during query to the database, try again later")
+        tries = 3
+        for i in range(tries):
+            try:
+                all_account_list = Accounts.query.all()
+            except:
+                if i < tries - 1: # i is zero indexed
+                    db.session.rollback()
+                    continue
+                else:
+                    db.session.rollback()
+                    raise Exception(f"There was exception during query to the database, try again later")
+            break
         for account in all_account_list:
             account_list.append(account.address)
         return account_list
@@ -216,11 +245,18 @@ class XRPWallet():
             
         else:
             logger.warning('Destination tag exist in db, getting it ')
-            try:
-                pd = Settings.query.filter_by(name = "destination_tag").first()
-            except:
-                db.session.rollback()
-                raise Exception(f"There was exception during query to the database, try again later")
+            tries = 3
+            for i in range(tries):
+                try:
+                    pd = Settings.query.filter_by(name = "destination_tag").first()
+                except:
+                    if i < tries - 1: # i is zero indexed
+                        db.session.rollback()
+                        continue
+                    else:
+                        db.session.rollback()
+                        raise Exception(f"There was exception during query to the database, try again later")
+                break
             logger.warning(f'Get destination tag - {pd.value}')
             dest_tag = int(pd.value) + 1
             pd.value = str(dest_tag)
@@ -285,11 +321,18 @@ class XRPWallet():
     
     def set_balance(self, s_address, s_amount):
         try:
-            try:
-                pd = Accounts.query.filter_by(address = s_address).first()
-            except:
-                db.session.rollback()
-                raise Exception(f"There was exception during query to the database, try again later")
+            tries = 3
+            for i in range(tries):
+                try:
+                    pd = Accounts.query.filter_by(address = s_address).first()
+                except:
+                    if i < tries - 1: # i is zero indexed
+                        db.session.rollback()
+                        continue
+                    else:
+                        db.session.rollback()
+                        raise Exception(f"There was exception during query to the database, try again later")
+                break
             
             pd.amount = decimal.Decimal(s_amount)                     
             with app.app_context():
@@ -323,11 +366,18 @@ class XRPWallet():
         return wallets
     
     def get_seed_from_address(self, address):
-        try:
-            pd = Wallets.query.filter_by(pub_address = address).first()
-        except:
-            db.session.rollback()
-            raise Exception(f"There was exception during query to the database, try again later")
+        tries = 3
+        for i in range(tries):
+            try:
+                pd = Wallets.query.filter_by(pub_address = address).first()
+            except:
+                if i < tries - 1: # i is zero indexed
+                    db.session.rollback()
+                    continue
+                else:
+                    db.session.rollback()
+                    raise Exception(f"There was exception during query to the database, try again later")
+            break
         return Encryption.decrypt(pd.priv_key)
     
     def make_multipayout(self, payout_list):
@@ -337,6 +387,8 @@ class XRPWallet():
         for payout in payout_list:
             if 'dest_tag' not in payout:
                 payout.update({'dest_tag': None})
+            else:
+                payout.update({'dest_tag': int(payout['dest_tag'])})
     
         for payout in payout_list:
             if not is_valid_xaddress(payout['dest']) and not is_valid_classic_address(payout['dest']):
@@ -401,9 +453,7 @@ class XRPWallet():
         if account_address == destination:
            logger.warning(f"Fee-deposit account, skip")
            return False
-        
-        logger.warning(self.get_seed_from_address(account_address))
-        
+                
         sending_wallet = xrpl.wallet.Wallet.from_seed(self.get_seed_from_address(account_address))
 
         if account_address == self.get_fee_deposit_account():
