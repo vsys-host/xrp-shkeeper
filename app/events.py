@@ -5,6 +5,7 @@ from .models import Settings, db
 from .logging import logger
 from .config import config
 from .wallet import XRPWallet
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 
 w = XRPWallet()
 
@@ -29,6 +30,51 @@ def log_loop(last_checked_block, check_interval):
             logger.exception(f'Last checked block {last_checked_block} is bigger than last block {last_block} in blockchain')
         elif last_checked_block == last_block - 2:
             pass
+        elif (last_block - last_checked_block) > 1000:
+            def check_in_parallel(block):
+                try:
+                    logger.warning(f"now checking in parallel block {block}")
+                    transactions = w.get_all_transactions_from_ledger(block)
+                    for tx in transactions:
+                        if tx['TransactionType'] == "Payment":
+                             if tx['Account'] in set_accounts or tx['Destination'] in set_accounts :
+                                logger.warning(f"Found related transaction {tx['hash']}")
+                                walletnotify_shkeeper.delay('XRP', tx['hash'])
+                except Exception as e:
+                    logger.exception(f'Block {block}: Failed to scan: {e}')
+                    return False
+                return True
+            
+            with ThreadPoolExecutor(max_workers=config['EVENTS_MAX_THREADS_NUMBER']) as executor:
+                 while True:
+                    blocks = []
+                    try:
+                        if last_block - last_checked_block < 1000:
+                            break
+                        for i in range(int(config['EVENTS_MAX_THREADS_NUMBER'])):
+                            blocks.append(last_checked_block + 1 + i)
+                        start_time = time.time()
+                        results = list(executor.map(check_in_parallel, blocks))
+                        logger.debug(f'Block chunk {blocks[0]} - {blocks[-1]} processed for {time.time() - start_time} seconds')
+    
+                        if all(results):
+                            logger.debug(f"Commiting chunk {blocks[0]} - {blocks[-1]}")
+                            last_checked_block = blocks[-1]
+                            pd = Settings.query.filter_by(name = "last_block").first()
+                            pd.value = last_checked_block
+                            with app.app_context():
+                                db.session.add(pd)
+                                db.session.commit()
+                                db.session.close()
+                        else:
+                            logger.info(f"Some blocks failed, retrying chunk {blocks[0]} - {blocks[-1]}")
+
+                    except Exception as e:
+                        sleep_sec = 60
+                        logger.exception(f"Exteption in main block scanner loop: {e}")
+                        logger.warning(f"Waiting {sleep_sec} seconds before retry.")
+                        time.sleep(sleep_sec)
+    
         else:            
             for x in range(last_checked_block + 1, last_block):
                 logger.warning(f"now checking block {x}")
@@ -39,7 +85,7 @@ def log_loop(last_checked_block, check_interval):
                             logger.warning(f"Found related transaction {tx['hash']}")
                             walletnotify_shkeeper.delay('XRP', tx['hash'])
 
-                last_checked_block = x # TODO store this value in database
+                last_checked_block = x 
         
                 pd = Settings.query.filter_by(name = "last_block").first()
                 pd.value = x
@@ -78,5 +124,3 @@ def events_listener():
             logger.warning(f"Waiting {sleep_sec} seconds before retry.")
             time.sleep(sleep_sec)
     
-
-

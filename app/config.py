@@ -6,6 +6,7 @@ config = {
     'FULLNODE_URL': os.environ.get('FULLNODE_URL', 'https://s1.altnet.rippletest.net:51234/'),
     'FULLNODE_TIMEOUT': os.environ.get('FULLNODE_TIMEOUT', '60'),
     'CHECK_NEW_BLOCK_EVERY_SECONDS': os.environ.get('CHECK_NEW_BLOCK_EVERY_SECONDS',2),
+    'EVENTS_MAX_THREADS_NUMBER': int(os.environ.get('EVENTS_MAX_THREADS_NUMBER', 5)),
     'DEBUG': os.environ.get('DEBUG', False),
     'LOGGING_LEVEL': os.environ.get('LOGGING_LEVEL', 'INFO'),
     'SQLALCHEMY_DATABASE_URI' : os.environ.get('SQLALCHEMY_DATABASE_URI', "mariadb+pymysql://root:shkeeper@mariadb/xrp-shkeeper?charset=utf8mb4"),
