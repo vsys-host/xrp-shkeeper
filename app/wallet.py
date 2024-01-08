@@ -35,6 +35,13 @@ class XRPWallet():
         ledger_request = Ledger(ledger_index=ledger_index, transactions=True)
         ledger_response = self.client.request(ledger_request)
         return ledger_response
+    
+    def get_all_transactions_from_ledger(self, ledger_index):
+        ledger_request = Ledger(ledger_index=ledger_index, transactions=True, expand=True)
+        ledger_response = self.client.request(ledger_request)
+        transactions = ledger_response.result
+        transactions = transactions['ledger']['transactions']
+        return transactions
 
     def get_transaction_from_ledger(self, transaction_index):
         transaction_request = Tx(transaction=transaction_index)

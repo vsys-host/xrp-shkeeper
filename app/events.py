@@ -32,13 +32,12 @@ def log_loop(last_checked_block, check_interval):
         else:            
             for x in range(last_checked_block + 1, last_block):
                 logger.warning(f"now checking block {x}")
-                ledger_data = w.get_ledger_data(x)
-                for tx in ledger_data.result["ledger"]["transactions"]:
-                    transaction = w.get_transaction_from_ledger(tx).result
-                    if transaction['TransactionType'] == "Payment":
-                        if transaction['Account'] in set_accounts or transaction['Destination'] in set_accounts :
-                            logger.warning(f'Found related transaction {tx}')
-                            walletnotify_shkeeper.delay('XRP', tx)
+                transactions = w.get_all_transactions_from_ledger(x)
+                for tx in transactions:
+                    if tx['TransactionType'] == "Payment":
+                         if tx['Account'] in set_accounts or tx['Destination'] in set_accounts :
+                            logger.warning(f"Found related transaction {tx['hash']}")
+                            walletnotify_shkeeper.delay('XRP', tx['hash'])
 
                 last_checked_block = x # TODO store this value in database
         
