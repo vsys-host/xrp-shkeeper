@@ -21,7 +21,7 @@ config = {
     'CELERY_MAX_TASKS_PER_CHILD': os.environ.get('CELERY_MAX_TASKS_PER_CHILD', '10'), 
     'MIN_TRANSFER_THRESHOLD': Decimal(os.environ.get('MIN_TRANSFER_THRESHOLD', '0.1')),
     'UPDATE_BALANCES_EVERY_SECONDS': os.environ.get('UPDATE_BALANCES_EVERY_SECONDS', '3600'),
-    'LAST_BLOCK_LOCKED': os.environ.get('LAST_BLOCK_LOCKED', "True"),
+    'LAST_BLOCK_LOCKED': os.environ.get('LAST_BLOCK_LOCKED', "False"),
     'NETWORK_FEE': os.environ.get('NETWORK_FEE', "0.0005"), #in XRP
     'XADDRESS_MODE': os.environ.get('XADDRESS_MODE', "disabled"), # uses one address and destination tag, DO NOT enable if not sure!
     'XRP_NETWORK': os.environ.get('XRP_NETWORK', 'main'),  # main, testnet
