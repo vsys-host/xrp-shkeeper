@@ -30,7 +30,7 @@ def log_loop(last_checked_block, check_interval):
             logger.exception(f'Last checked block {last_checked_block} is bigger than last block {last_block} in blockchain')
         elif last_checked_block == last_block - 2:
             pass
-        elif (last_block - last_checked_block) > 1000:
+        elif (last_block - last_checked_block) > int(config['EVENTS_MIN_DIFF_TO_RUN_PARALLEL']):
             def check_in_parallel(block):
                 try:
                     logger.warning(f"now checking in parallel block {block}")
@@ -49,7 +49,7 @@ def log_loop(last_checked_block, check_interval):
                  while True:
                     blocks = []
                     try:
-                        if last_block - last_checked_block < 1000:
+                        if last_block - last_checked_block < int(config['EVENTS_MIN_DIFF_TO_RUN_PARALLEL']):
                             break
                         for i in range(int(config['EVENTS_MAX_THREADS_NUMBER'])):
                             blocks.append(last_checked_block + 1 + i)
@@ -71,7 +71,7 @@ def log_loop(last_checked_block, check_interval):
 
                     except Exception as e:
                         sleep_sec = 60
-                        logger.exception(f"Exteption in main block scanner loop: {e}")
+                        logger.exception(f"Exception in main block scanner loop: {e}")
                         logger.warning(f"Waiting {sleep_sec} seconds before retry.")
                         time.sleep(sleep_sec)
     

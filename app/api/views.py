@@ -44,8 +44,11 @@ def get_transaction(txid):
                 address = transaction["Destination"]
                 category = 'receive'
             else:
-                dest_tag = int(transaction['DestinationTag'])
-                address = w.get_xaddress(dest_tag)
+                if 'DestinationTag' in transaction:
+                     dest_tag = int(transaction['DestinationTag'])
+                     address = w.get_xaddress(dest_tag)
+                else:
+                     address = transaction["Destination"]
                 category = 'receive'
         elif transaction['Account'] in list_accounts:                
             address = transaction["Account"]

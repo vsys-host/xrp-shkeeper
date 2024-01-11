@@ -80,7 +80,7 @@ def refresh_balances(self):
             account_list = w.get_all_accounts()
         else:
             add = account_set - address_set
-            logger.warning(f'There is {add} in accounts table but there is not in wallets table' )
+            logger.warning(f'There are {add} in accounts table but there are not in wallets table' )
     else:
         logger.warning(f'Tables in sync')
 
