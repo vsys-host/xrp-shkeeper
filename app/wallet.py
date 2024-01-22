@@ -492,8 +492,9 @@ class XRPWallet():
                 return False
         try:    
             response = xrpl.transaction.submit_and_wait(payment, self.client, sending_wallet)    
-        except xrpl.transaction.XRPLReliableSubmissionException as e:   
-            response = f"Submit failed: {e}"                
+        except Exception as e:   
+            response = f"Submit failed: {e}"  
+            logger.warning(e)              
         logger.warning(response)        
         drain_results.append({
                         "dest": destination,
