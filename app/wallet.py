@@ -491,7 +491,7 @@ class XRPWallet():
                 logger.warning("To soon to delete account, need wait some time: https://xrpl.org/accountdelete.html#error-cases")
                 return False
         try:    
-            response = xrpl.transaction.submit_and_wait(payment, self.client, sending_wallet)    
+            response = xrpl.transaction.submit_and_wait(payment, self.client, sending_wallet, check_fee=False)    
         except Exception as e:   
             response = f"Submit failed: {e}"  
             logger.warning(e)              
