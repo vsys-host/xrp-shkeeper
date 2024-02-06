@@ -411,7 +411,7 @@ class XRPWallet():
         should_pay  = decimal.Decimal(0)
         for payout in payout_list:
             should_pay = should_pay + decimal.Decimal(payout['amount'])
-        should_pay = should_pay + len(payout_list) * decimal.Decimal(config['NETWORK_FEE']) + config['ACCOUNT_RESERVED_AMOUNT']
+        should_pay = should_pay + len(payout_list) * decimal.Decimal(config['NETWORK_FEE']) + decimal.Decimal(config['ACCOUNT_RESERVED_AMOUNT'])
         have_crypto = self.get_fee_deposit_account_balance()
         if have_crypto < should_pay:
             raise Exception(f"Have not enough crypto on fee account, need {should_pay} have {have_crypto}")
