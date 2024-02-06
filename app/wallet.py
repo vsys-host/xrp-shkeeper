@@ -422,10 +422,10 @@ class XRPWallet():
             for payout in payout_list:
                 payment = xrpl.models.transactions.Payment(
                         account=self.get_fee_deposit_account(),
-                        amount=xrpl.utils.xrp_to_drops(payout['amount']),
+                        amount=xrpl.utils.xrp_to_drops(decimal.Decimal(payout['amount'])),
                         destination=payout['dest'],
                         destination_tag=payout['dest_tag'],
-                        fee=xrpl.utils.xrp_to_drops(config['NETWORK_FEE']),
+                        fee=xrpl.utils.xrp_to_drops(decimal.Decimal(config['NETWORK_FEE'])),
                         last_ledger_sequence=last_ledger_seq)                 				
                 try:    
                     response = xrpl.transaction.submit_and_wait(payment, self.client, sending_wallet)    
@@ -474,9 +474,9 @@ class XRPWallet():
             last_ledger_seq = int(current_index) + int(config['LEDGERS_TO_WAIT'])
             payment = xrpl.models.transactions.Payment(
                 account=sending_wallet.address,
-                amount=xrpl.utils.xrp_to_drops(int(amount)),
+                amount=xrpl.utils.xrp_to_drops(decimal.Decimal(amount)),
                 destination=destination,
-                fee=xrpl.utils.xrp_to_drops(config['NETWORK_FEE']),
+                fee=xrpl.utils.xrp_to_drops(decimal.Decimal(config['NETWORK_FEE'])),
                 last_ledger_sequence=last_ledger_seq 
             )
 
@@ -497,7 +497,7 @@ class XRPWallet():
                 payment = xrpl.models.transactions.AccountDelete(
                     account=sending_wallet.address,
                     destination=destination,
-                    fee=xrpl.utils.xrp_to_drops(config['DELETE_ACCOUNT_FEE']),
+                    fee=xrpl.utils.xrp_to_drops(decimal.Decimal(config['DELETE_ACCOUNT_FEE'])),
                     last_ledger_sequence=last_ledger_seq 
                 )                
             else:
