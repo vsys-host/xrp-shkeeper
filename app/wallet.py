@@ -411,19 +411,22 @@ class XRPWallet():
         should_pay  = decimal.Decimal(0)
         for payout in payout_list:
             should_pay = should_pay + decimal.Decimal(payout['amount'])
-        should_pay = should_pay + len(payout_list) * decimal.Decimal(config['NETWORK_FEE']) + 10
+        should_pay = should_pay + len(payout_list) * decimal.Decimal(config['NETWORK_FEE']) + config['ACCOUNT_RESERVED_AMOUNT']
         have_crypto = self.get_fee_deposit_account_balance()
         if have_crypto < should_pay:
             raise Exception(f"Have not enough crypto on fee account, need {should_pay} have {have_crypto}")
         else:
             sending_wallet = xrpl.wallet.Wallet.from_seed(self.get_seed_from_address(self.get_fee_deposit_account()))
+            current_index = self.get_last_block_number()
+            last_ledger_seq = int(current_index) + int(config['LEDGERS_TO_WAIT'])
             for payout in payout_list:
                 payment = xrpl.models.transactions.Payment(
                         account=self.get_fee_deposit_account(),
                         amount=xrpl.utils.xrp_to_drops(payout['amount']),
                         destination=payout['dest'],
-                        destination_tag=payout['dest_tag'])
-                				
+                        destination_tag=payout['dest_tag'],
+                        fee=xrpl.utils.xrp_to_drops(config['NETWORK_FEE']),
+                        last_ledger_sequence=last_ledger_seq)                 				
                 try:    
                     response = xrpl.transaction.submit_and_wait(payment, self.client, sending_wallet)    
                 except xrpl.transaction.XRPLReliableSubmissionException as e:   
@@ -433,7 +436,7 @@ class XRPWallet():
                     "dest": payout['dest'],
                     "amount": float(payout['amount']),
                     "status": "success",
-                    "txids": [response.result['hash']],
+                    "txids": [response.result['hash']], 
                 })
 
         
@@ -466,12 +469,17 @@ class XRPWallet():
         if account_address == self.get_fee_deposit_account():
             logger.warning("Draining fee-deposit account")
             account_balance = self.get_balance(account_address)
-            amount = account_balance - decimal.Decimal('0.00002') - decimal.Decimal('10')
+            amount = account_balance - decimal.Decimal(config['NETWORK_FEE']) - decimal.Decimal(config['ACCOUNT_RESERVED_AMOUNT'])
+            current_index = self.get_last_block_number()
+            last_ledger_seq = int(current_index) + int(config['LEDGERS_TO_WAIT'])
             payment = xrpl.models.transactions.Payment(
                 account=sending_wallet.address,
                 amount=xrpl.utils.xrp_to_drops(int(amount)),
                 destination=destination,
+                fee=xrpl.utils.xrp_to_drops(config['NETWORK_FEE']),
+                last_ledger_sequence=last_ledger_seq 
             )
+
             logger.warning(xrpl.account.get_latest_transaction(account_address, self.client).result)
         else:    
             logger.warning("Draining regular one time account, calling delete account")
@@ -482,10 +490,15 @@ class XRPWallet():
                    return False
             if int(self.get_last_block_number()) - int(self.get_sequence_number(account_address)) > 256:
                 logger.warning(f"Account {account_address} can be deleted")
+
+                current_index = self.get_last_block_number()
+                last_ledger_seq = int(current_index) + int(config['LEDGERS_TO_WAIT'])
                 
                 payment = xrpl.models.transactions.AccountDelete(
                     account=sending_wallet.address,
                     destination=destination,
+                    fee=xrpl.utils.xrp_to_drops(config['DELETE_ACCOUNT_FEE']),
+                    last_ledger_sequence=last_ledger_seq 
                 )                
             else:
                 logger.warning("To soon to delete account, need wait some time: https://xrpl.org/accountdelete.html#error-cases")
