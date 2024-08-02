@@ -36,10 +36,13 @@ def get_latest_release(name):
         url = 'https://api.github.com/repos/XRPLF/rippled/releases/latest'
     else:
         return False
-    data = requests.get(url).json()
-    version = data["tag_name"]
-    info = { key:data[key] for key in ["name", "tag_name", "published_at"] }
-    info['version'] = version
+    try:
+        data = requests.get(url).json()
+        version = data["tag_name"]
+        info = { key:data[key] for key in ["name", "tag_name", "published_at"] }
+        info['version'] = version
+    except Exception as e:
+        info = {}
     return info
 
 
@@ -54,8 +57,10 @@ def get_all_metrics():
         last_fullnode_block_number = w.get_last_block_number()
         response['last_fullnode_block_number'] = last_fullnode_block_number
         response['last_fullnode_block_timestamp'] = w.get_ledger_data(last_fullnode_block_number).result['ledger']['close_time']
-        
-        rippled_version =  status["result"]["info"]["build_version"]
+        try:
+            rippled_version =  status["result"]["info"]["build_version"]
+        except Exception as e:
+            rippled_version =  status["result"]["info"]["rippled_version"]
         response['rippled_version'] = rippled_version
         
         pd = Settings.query.filter_by(name = 'last_block').first()
@@ -64,25 +69,26 @@ def get_all_metrics():
         response['xrp_wallet_last_block_timestamp'] = w.get_ledger_data(last_checked_block_number).result['ledger']['close_time']
         response['xrp_fullnode_status'] = 1
         return response
+    
+rippled_last_release = Info(
+         'rippled_last_release',
+         'Version of the latest release from https://github.com/XRPLF/rippled/releases'
+     )
+        
+rippled_last_release.info(get_latest_release('rippled'))
+rippled_fullnode_version = Info('rippled_fullnode_version', 'Current rippled version in use')
+xrp_fullnode_status = Gauge('xrp_fullnode_status', 'Connection status to xrp fullnode')
+xrp_fullnode_last_block = Gauge('xrp_fullnode_last_block', 'Last block loaded to the fullnode', )
+xrp_wallet_last_block = Gauge('xrp_wallet_last_block', 'Last checked block ') 
+xrp_fullnode_last_block_timestamp = Gauge('xrp_fullnode_last_block_timestamp', 'Last block timestamp loaded to the fullnode', )
+xrp_wallet_last_block_timestamp = Gauge('xrp_wallet_last_block_timestamp', 'Last checked block timestamp')
 
 
 
 @metrics_blueprint.get("/metrics")
 def get_metrics():
     response = get_all_metrics()
-    if response['xrp_fullnode_status'] == 1:
-        rippled_last_release = Info(
-            'rippled_last_release',
-            'Version of the latest release from https://github.com/XRPLF/rippled/releases'
-        )
-        
-        rippled_last_release.info(get_latest_release('rippled'))
-        rippled_fullnode_version = Info('rippled_fullnode_version', 'Current rippled version in use')
-        xrp_fullnode_status = Gauge('xrp_fullnode_status', 'Connection status to xrp fullnode')
-        xrp_fullnode_last_block = Gauge('xrp_fullnode_last_block', 'Last block loaded to the fullnode', )
-        xrp_wallet_last_block = Gauge('xrp_wallet_last_block', 'Last checked block ') 
-        xrp_fullnode_last_block_timestamp = Gauge('xrp_fullnode_last_block_timestamp', 'Last block timestamp loaded to the fullnode', )
-        xrp_wallet_last_block_timestamp = Gauge('xrp_wallet_last_block_timestamp', 'Last checked block timestamp')
+    if response['xrp_fullnode_status'] == 1:     
         rippled_fullnode_version.info({'version': response['rippled_version']})
         xrp_fullnode_last_block.set(response['last_fullnode_block_number'])
         xrp_fullnode_last_block_timestamp.set(response['last_fullnode_block_timestamp'])
