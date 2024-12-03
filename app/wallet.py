@@ -325,6 +325,28 @@ class XRPWallet():
         sequence = str(account_data["Sequence"])
     
         return sequence
+
+    def is_active(self, address):
+        logger.warning(f'Checking if {address} is activated')
+        try:
+            request = AccountInfo(
+                account=address,
+                ledger_index="validated",
+                strict=True
+            )
+            response = self.client.request(request)
+            logger.warning(response)
+            if 'error' in response.result.keys():
+                logger.warning(f'{address} is NOT activated or cannot get account state')
+                return False
+            else:
+                logger.warning(f'{address} is activated')
+                return True
+        except Exception as e:
+            if "actNotFound" in str(e):
+                logger.warning(f'{address} is NOT activated')
+                return False
+            raise  
     
     def set_balance(self, s_address, s_amount):
         try:
@@ -410,11 +432,13 @@ class XRPWallet():
         # Check if enouth funds for multipayout on account
         should_pay  = decimal.Decimal(0)
         for payout in payout_list:
-            should_pay = should_pay + decimal.Decimal(payout['amount'])
+            should_pay = should_pay + decimal.Decimal(payout['amount']) 
         should_pay = should_pay + len(payout_list) * decimal.Decimal(config['NETWORK_FEE']) + decimal.Decimal(config['ACCOUNT_RESERVED_AMOUNT'])
         have_crypto = self.get_fee_deposit_account_balance()
         if have_crypto < should_pay:
-            raise Exception(f"Have not enough crypto on fee account, need {should_pay} have {have_crypto}")
+            raise Exception(f"Have not enough crypto on fee account, need {should_pay} have {have_crypto}. " 
+                            f"Please note that {should_pay} includes {decimal.Decimal(config['ACCOUNT_RESERVED_AMOUNT'])} "
+                            f"which is reserved by the account and cannot be sent and network fee for all transactions.")
         else:
             sending_wallet = xrpl.wallet.Wallet.from_seed(self.get_seed_from_address(self.get_fee_deposit_account()))
             current_index = self.get_last_block_number()
@@ -445,7 +469,6 @@ class XRPWallet():
 
     
     def drain_account(self, account_address, destination):
-        #TODO stop draining if fee deposit account has 0 in the balance
         drain_results = []
         account_balance = decimal.Decimal(0)
         if not is_valid_xaddress(destination) and not is_valid_classic_address(destination):
@@ -490,16 +513,32 @@ class XRPWallet():
                    return False
             if int(self.get_last_block_number()) - int(self.get_sequence_number(account_address)) > 256:
                 logger.warning(f"Account {account_address} can be deleted")
-
                 current_index = self.get_last_block_number()
                 last_ledger_seq = int(current_index) + int(config['LEDGERS_TO_WAIT'])
-                
-                payment = xrpl.models.transactions.AccountDelete(
-                    account=sending_wallet.address,
-                    destination=destination,
-                    fee=xrpl.utils.xrp_to_drops(decimal.Decimal(config['DELETE_ACCOUNT_FEE'])),
-                    last_ledger_sequence=last_ledger_seq 
-                )                
+                if self.is_active(destination):
+                    payment = xrpl.models.transactions.AccountDelete(
+                        account=sending_wallet.address,
+                        destination=destination,
+                        fee=xrpl.utils.xrp_to_drops(decimal.Decimal(config['DELETE_ACCOUNT_FEE'])),
+                        last_ledger_sequence=last_ledger_seq 
+                    )               
+                else:
+                    account_balance = self.get_balance(account_address)
+                    amount = account_balance - decimal.Decimal(config['NETWORK_FEE']) - decimal.Decimal(config['ACCOUNT_RESERVED_AMOUNT'])
+                    if amount <=  decimal.Decimal(config['ACCOUNT_RESERVED_AMOUNT']):
+                        logger.warning(f"Not enough crypto on {account_address} to activate fee-deposit account, activate it manually or wait for bigger transaction")
+                        return False
+                    current_index = self.get_last_block_number()
+                    last_ledger_seq = int(current_index) + int(config['LEDGERS_TO_WAIT'])
+                    payment = xrpl.models.transactions.Payment(
+                        account=sending_wallet.address,
+                        amount=xrpl.utils.xrp_to_drops(decimal.Decimal(amount)),
+                        destination=destination,
+                        fee=xrpl.utils.xrp_to_drops(decimal.Decimal(config['NETWORK_FEE'])),
+                        last_ledger_sequence=last_ledger_seq 
+                    )
+                    logger.warning(xrpl.account.get_latest_transaction(account_address, self.client).result)
+
             else:
                 logger.warning("To soon to delete account, need wait some time: https://xrpl.org/accountdelete.html#error-cases")
                 return False
