@@ -23,8 +23,8 @@ config = {
     'UPDATE_BALANCES_EVERY_SECONDS': os.environ.get('UPDATE_BALANCES_EVERY_SECONDS', '3600'),
     'LAST_BLOCK_LOCKED': os.environ.get('LAST_BLOCK_LOCKED', "False"),
     'NETWORK_FEE': os.environ.get('NETWORK_FEE', "0.00005"), # in XRP
-    'ACCOUNT_RESERVED_AMOUNT': os.environ.get('ACCOUNT_RESERVED_AMOUNT', "10"), # in XRP
-    'DELETE_ACCOUNT_FEE': os.environ.get('DELETE_ACCOUNT_FEE', "2"), # in XRP
+    'ACCOUNT_RESERVED_AMOUNT': os.environ.get('ACCOUNT_RESERVED_AMOUNT', "1"), # in XRP
+    'DELETE_ACCOUNT_FEE': os.environ.get('DELETE_ACCOUNT_FEE', "0.2"), # in XRP
     'LEDGERS_TO_WAIT': os.environ.get('LEDGERS_TO_WAIT', "100"), # used to calc last_ledger_sequence for payments
     'XADDRESS_MODE': os.environ.get('XADDRESS_MODE', "disabled"), # uses one address and destination tag, DO NOT enable if not sure!
     'XRP_NETWORK': os.environ.get('XRP_NETWORK', 'main'),  # main, testnet
