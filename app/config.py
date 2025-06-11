@@ -2,7 +2,6 @@ import os
 from decimal import Decimal
 
 config = {
-
     'FULLNODE_URL': os.environ.get('FULLNODE_URL', 'https://s1.ripple.com:51234/'),
     'FULLNODE_TIMEOUT': os.environ.get('FULLNODE_TIMEOUT', '60'),
     'CHECK_NEW_BLOCK_EVERY_SECONDS': os.environ.get('CHECK_NEW_BLOCK_EVERY_SECONDS',2),
@@ -28,8 +27,7 @@ config = {
     'LEDGERS_TO_WAIT': os.environ.get('LEDGERS_TO_WAIT', "100"), # used to calc last_ledger_sequence for payments
     'XADDRESS_MODE': os.environ.get('XADDRESS_MODE', "disabled"), # uses one address and destination tag, DO NOT enable if not sure!
     'XRP_NETWORK': os.environ.get('XRP_NETWORK', 'main'),  # main, testnet
-       
-
+    'READ_MODE': os.environ.get('READ_MODE', 'disabled'),
 }
 
 def is_test_network():
@@ -37,5 +35,9 @@ def is_test_network():
         return False
     else:
         return True
-    
 
+def is_read_mode():
+    if os.environ.get('READ_MODE', 'disabled') == 'enabled':
+        return True
+    else:
+        return False

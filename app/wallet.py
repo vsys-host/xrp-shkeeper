@@ -4,8 +4,11 @@ import decimal
 import xrpl
 import logging
 import requests
+from bip_utils import Bip44, Bip44Coins, Bip44Changes
+from bip_utils.addr import XrpAddr
 from flask import current_app as app
 from xrpl.wallet import Wallet
+from sqlalchemy import func
 from xrpl.clients import JsonRpcClient
 from xrpl.core.addresscodec import is_valid_xaddress, is_valid_classic_address,xaddress_to_classic_address, classic_address_to_xaddress
 from xrpl.models.requests.account_info import AccountInfo
@@ -15,7 +18,7 @@ from xrpl.models.requests.tx import Tx
 from xrpl.models.response import ResponseStatus
 from xrpl.utils import drops_to_xrp
 from .encryption import Encryption
-from .config import config, is_test_network
+from .config import config, is_test_network, is_read_mode
 from .models import Wallets, Accounts, Settings, db
 from .logging import logger
 
@@ -74,7 +77,7 @@ class XRPWallet():
         e = Encryption
         try:
             with app.app_context():
-                db.session.add(Wallets(pub_address = address, 
+                db.session.add(Wallets(pub_address = address,
                                         priv_key = e.encrypt(secret),
                                         type = "fee_deposit",
                                         ))
@@ -126,7 +129,9 @@ class XRPWallet():
         amount  = self.get_balance(pd.address)
         return amount
 
-
+    def get_read_mode_deposit_account_balance(self):
+        amount = db.session.query(func.sum(Accounts.amount)).filter(Accounts.type == "read_mode").scalar()
+        return amount
 
     def handle_success_response(self, response):
         result = response.result
@@ -157,14 +162,23 @@ class XRPWallet():
         logger.warning(f'Saving wallet {address} to DB')
         try:
             with app.app_context():
-                db.session.add(Wallets(pub_address = address, 
-                                        priv_key = e.encrypt(secret),
-                                        type = "regular",
-                                        ))
-                db.session.add(Accounts(address = address, 
-                                             crypto = "XRP",
-                                             amount = 0,
-                                             ))
+                wallet_kwargs = {
+                    "pub_address": address,
+                    "type": "read_mode" if is_read_mode() else "regular"
+                }
+                if not is_read_mode():
+                    wallet_kwargs["priv_key"] = e.encrypt(secret)
+
+                account_kwargs = {
+                    "address": address,
+                    "crypto": "XRP",
+                    "amount": 0,
+                }
+
+                if is_read_mode():
+                    account_kwargs["type"] = "read_mode"
+                db.session.add(Wallets(**wallet_kwargs))
+                db.session.add(Accounts(**account_kwargs))
                 db.session.commit()
                 db.session.close()
                 db.engine.dispose() 
@@ -281,8 +295,16 @@ class XRPWallet():
                     db.engine.dispose() 
             return dest_tag        
 
-    def generate_wallet(self):
-        if config['XADDRESS_MODE'] == 'disabled':
+    def generate_wallet(self, xpub_str=None):
+        if is_read_mode():
+            pub_ctx = Bip44.FromExtendedKey(xpub_str, Bip44Coins.RIPPLE)
+            result = db.session.execute("SELECT COUNT(*) FROM wallets")
+            count = result.fetchone()[0]
+            addr_ctx = pub_ctx.Change(Bip44Changes.CHAIN_EXT).AddressIndex(count)
+            xrp_address = addr_ctx.PublicKey().ToAddress()
+            self.save_wallet_to_db(xrp_address, secret=None)
+            return xrp_address
+        elif config['XADDRESS_MODE'] == 'disabled':
             wallet = Wallet.create()    
             # Extract the address and secret from the wallet
             address = wallet.classic_address
@@ -557,8 +579,3 @@ class XRPWallet():
         logger.warning(drain_results)
         
         return drain_results
-    
-
-    
-    
-                                    
