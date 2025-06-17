@@ -56,7 +56,7 @@ def get_transaction(txid):
         else:
             logger.warning({'status': 'error', 'msg': 'txid is not related to any known address'})
             return {'status': 'error', 'msg': 'txid is not related to any known address'}
-        amount = w.get_xrp_from_drops(transaction["Amount"]) 
+        amount = w.get_xrp_from_drops(transaction['meta']['delivered_amount'])
         confirmations = int(w.get_last_block_number()) - int(transaction["ledger_index"])
         related_transactions.append([address, amount, confirmations, category])
     except Exception as e:
