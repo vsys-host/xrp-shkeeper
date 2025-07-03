@@ -1,6 +1,7 @@
 from flask import current_app, g
+from flask import request
 from ..logging import logger
-from ..config import config
+from ..config import config, is_read_mode
 from . import api
 from app import create_app
 from ..wallet import XRPWallet
@@ -9,16 +10,21 @@ app = create_app()
 app.app_context().push()
 
 @api.post("/generate-address")
-def generate_new_address():   
+def generate_new_address():
+    data = request.get_json(silent=True) or {}
+    xpub_str = data.get("xpub")
     w = XRPWallet() 
-    new_address = w.generate_wallet()
+    new_address = w.generate_wallet(xpub_str)
     logger.warning(new_address)
     return {'status': 'success', 'address': new_address}
 
 @api.post('/balance')
 def get_balance():
     w = XRPWallet()
-    balance = w.get_fee_deposit_account_balance()
+    if is_read_mode():
+        balance = w.get_read_mode_deposit_account_balance()
+    else:
+      balance = w.get_fee_deposit_account_balance()
     return {'status': 'success', 'balance': balance}
 
 @api.post('/status')
@@ -86,7 +92,3 @@ def get_all_addresses():
     w = XRPWallet()
     all_addresses_list = w.get_all_accounts()
     return all_addresses_list
-    
-
-
-    
