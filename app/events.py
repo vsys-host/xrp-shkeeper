@@ -68,6 +68,7 @@ def log_loop(last_checked_block, check_interval):
                                 db.session.close()
                         else:
                             logger.info(f"Some blocks failed, retrying chunk {blocks[0]} - {blocks[-1]}")
+                            time.sleep(2)
 
                     except Exception as e:
                         sleep_sec = 60
